@@ -6,6 +6,8 @@ import sys
 from colorama import Fore, Style
 from dotenv import load_dotenv
 from google import generativeai as genai
+from google.api_core.exceptions import ResourceExhausted \
+    as ResourceExhaustedError
 from pyfiglet import Figlet
 from rich.console import Console
 from rich.markdown import Markdown
@@ -29,7 +31,14 @@ def banner(c: Console) -> None:
 
 
 def _render_markdown(console: Console, text: str, *, end: str = "\n") -> None:
-    console.print(Markdown(text, code_theme="monokai", hyperlinks=True), end=end)
+    console.print(
+        Markdown(
+            text,
+            code_theme="monokai",
+            hyperlinks=True
+        ),
+        end=end
+    )
 
 
 def main() -> None:
@@ -39,7 +48,8 @@ def main() -> None:
     if not config.model:
         raise ShellMindError("MODEL is not set.")
 
-    genai.configure(api_key=config.api_key)
+    if hasattr(genai, "configure"):
+        genai.configure(api_key=config.api_key)  # type: ignore
 
     console = Console()
     messages = [{"role": "user", "parts": [{"text": SYSTEM_PROMPT}]}]
@@ -71,7 +81,30 @@ Type anything else to get a response from the AI.
 
             messages.append({"role": "user", "parts": [{"text": uin}]})
 
-            model = genai.GenerativeModel(config.model, system_instruction=SYSTEM_PROMPT)
+            model = None
+
+            if hasattr(genai, "GenerativeModel"):
+                try:
+                    model = genai.GenerativeModel(  # type: ignore
+                        config.model,
+                        system_instruction=SYSTEM_PROMPT
+                    )
+                except ResourceExhaustedError:
+                    print(
+                        Fore.RED +
+                        "Model is currently overloaded.",
+                        "Please try again later."
+                        + Style.RESET_ALL
+                    )
+                    continue
+            if model is None:
+                print(
+                    Fore.YELLOW +
+                    "Failed to initialize the generative model."
+                    + Style.RESET_ALL
+                )
+                continue
+
             res = model.generate_content(messages, tools=tools)
 
             final = ""
@@ -90,11 +123,21 @@ Type anything else to get a response from the AI.
 
             for call in tool_calls:
                 tool_result = run_tool((call.name, dict(call.args)))
-                messages.append({"role": "user", "parts": [{"text": f"Tool result ({call.name}):\n{tool_result}"}]})
+                t = f"Tool result ({call.name}):\n{tool_result}"
+                messages.append(
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": t}
+                        ]
+                    }
+                )
 
                 followup = model.generate_content(messages, tools=tools).text
                 _render_markdown(console, followup)
-                messages.append({"role": "model", "parts": [{"text": followup}]})
+                messages.append(
+                    {"role": "model", "parts": [{"text": followup}]}
+                )
 
             print()
 
