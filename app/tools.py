@@ -1,4 +1,6 @@
+import os
 import subprocess
+
 from colorama import Fore, Style
 
 SYSTEM_PROMPT = """
@@ -10,14 +12,37 @@ When using shell, call the tool without extra text first.
 def shell_tool(command: str) -> str:
     print(Fore.BLUE + f"Executing shell command: {command}" + Style.RESET_ALL)
 
-    result = subprocess.run(
-        command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    return result.stdout or result.stderr or "(no output)"
+    if os.name == "nt":
+        args = [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ]
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    else:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    parts = [result.stdout.strip(), result.stderr.strip()]
+    output = "\n".join(part for part in parts if part)
+
+    if result.returncode and output:
+        return f"(exit {result.returncode})\n{output}"
+
+    return output or "(no output)"
 
 
 # Tool schema expected by google-generativeai function calling.

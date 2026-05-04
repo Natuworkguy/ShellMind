@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from google import generativeai as genai
 from google.api_core.exceptions import ResourceExhausted \
     as ResourceExhaustedError
+from google.generativeai import protos
 from pyfiglet import Figlet
 from rich.console import Console
 from rich.markdown import Markdown
@@ -35,7 +36,12 @@ class config:
     model = os.getenv("MODEL")
     max_history_messages = _int_env("MAX_HISTORY_MESSAGES", 6, minimum=2)
     max_history_chars = _int_env("MAX_HISTORY_CHARS", 3000, minimum=1000)
-    max_tool_output_chars = _int_env("MAX_TOOL_OUTPUT_CHARS", 1200, minimum=500)
+    max_tool_rounds = _int_env("MAX_TOOL_ROUNDS", 4, minimum=1)
+    max_tool_output_chars = _int_env(
+        "MAX_TOOL_OUTPUT_CHARS",
+        1200,
+        minimum=500
+    )
     max_output_tokens = _int_env("MAX_OUTPUT_TOKENS", 512, minimum=128)
     prompt = Fore.BLUE + "[SM]> " + Style.RESET_ALL
 
@@ -71,46 +77,6 @@ def _trim_history(messages: list[dict]) -> None:
         > config.max_history_chars
     ):
         del messages[0]
-
-
-def _should_enable_tools(text: str) -> bool:
-    lowered = text.lower()
-
-    if lowered.startswith(("run ", "execute ", "shell ", "cmd ", "powershell ")):
-        return True
-
-    tool_words = {
-        "command",
-        "directory",
-        "file",
-        "folder",
-        "git",
-        "ls",
-        "pip",
-        "python",
-        "terminal",
-        "test",
-        "workspace",
-    }
-    action_words = {
-        "check",
-        "find",
-        "inspect",
-        "list",
-        "read",
-        "run",
-        "search",
-        "show",
-        "validate",
-        "what files",
-        "what is in",
-        "what's in",
-    }
-
-    return (
-        any(word in lowered for word in tool_words)
-        and any(word in lowered for word in action_words)
-    )
 
 
 def _direct_shell_command(text: str) -> str | None:
@@ -160,6 +126,24 @@ def _response_parts(response) -> tuple[str, list]:
             tool_calls.append(part.function_call)
 
     return final, tool_calls
+
+
+def _response_content(response):
+    candidates = getattr(response, "candidates", None) or []
+
+    if not candidates:
+        return None
+
+    return getattr(candidates[0], "content", None)
+
+
+def _tool_response_part(name: str, result: str):
+    return protos.Part(
+        function_response=protos.FunctionResponse(
+            name=name,
+            response={"result": result}
+        )
+    )
 
 
 def _render_markdown(console: Console, text: str, *, end: str = "\n") -> None:
@@ -228,7 +212,11 @@ def main() -> None:
 
             if uin == "/clear":
                 messages.clear()
-                print(Fore.LIGHTBLACK_EX + "Context cleared." + Style.RESET_ALL)
+                print(
+                    Fore.LIGHTBLACK_EX +
+                    "Context cleared."
+                    + Style.RESET_ALL
+                )
                 continue
 
             direct_command = _direct_shell_command(uin)
@@ -245,7 +233,9 @@ Type {Fore.BLUE}/model{Fore.YELLOW} to show active model.
 Type {Fore.BLUE}/help{Fore.YELLOW} or {Fore.BLUE}/?{Fore.YELLOW} to see this.
 Type {Fore.BLUE}/bye{Fore.YELLOW} to exit.
 Type {Fore.BLUE}/clear{Fore.YELLOW} to clear saved context.
-Type {Fore.BLUE}!<command>{Fore.YELLOW} or {Fore.BLUE}/run <command>{Fore.YELLOW} to run shell directly.
+Type {Fore.BLUE}!<command>{Fore.YELLOW} to run shell directly.
+Type {Fore.BLUE}/run <command>{Fore.YELLOW}
+or {Fore.BLUE}/shell <command>{Fore.YELLOW} to run shell directly.
 Type anything else to get a response from the AI.
 """ + Style.RESET_ALL
                 )
@@ -255,10 +245,7 @@ Type anything else to get a response from the AI.
             _trim_history(messages)
 
             try:
-                if _should_enable_tools(uin):
-                    res = model.generate_content(messages, tools=tools)
-                else:
-                    res = model.generate_content(messages)
+                res = model.generate_content(messages, tools=tools)
             except ResourceExhaustedError:
                 print(
                     Fore.RED +
@@ -275,24 +262,45 @@ Type anything else to get a response from the AI.
                     _render_markdown(console, final)
                     messages.append(_message("model", final))
                     _trim_history(messages)
+                else:
+                    print(
+                        Fore.YELLOW +
+                        "The model returned no response."
+                        + Style.RESET_ALL
+                    )
+                    messages.pop()
                 print()
                 continue
 
             tool_messages = messages.copy()
-
-            for call in tool_calls:
-                tool_result = run_tool((call.name, dict(call.args)))
-                trimmed = _trim_tool_output(tool_result)
-                tool_messages.append(
-                    _message("user", f"Tool result ({call.name}):\n{trimmed}")
-                )
-
-            _trim_history(tool_messages)
+            tool_outputs = []
+            followup = ""
 
             try:
-                followup, _ = _response_parts(
-                    model.generate_content(tool_messages)
-                )
+                for _ in range(config.max_tool_rounds):
+                    content = _response_content(res)
+                    if content is not None:
+                        tool_messages.append(content)
+
+                    tool_response_parts = []
+
+                    for call in tool_calls:
+                        tool_result = run_tool((call.name, dict(call.args)))
+                        trimmed = _trim_tool_output(tool_result)
+                        tool_outputs.append(f"{call.name}:\n{trimmed}")
+                        tool_response_parts.append(
+                            _tool_response_part(call.name, trimmed)
+                        )
+
+                    tool_messages.append(
+                        protos.Content(role="user", parts=tool_response_parts)
+                    )
+
+                    res = model.generate_content(tool_messages, tools=tools)
+                    followup, tool_calls = _response_parts(res)
+
+                    if not tool_calls:
+                        break
             except ResourceExhaustedError:
                 print(
                     Fore.RED +
@@ -302,6 +310,41 @@ Type anything else to get a response from the AI.
                     + Style.RESET_ALL
                 )
                 continue
+
+            if not followup.strip():
+                tool_messages.append(
+                    _message(
+                        "user",
+                        "Using the tool results above, answer the original "
+                        "request now. Do not call more tools."
+                    )
+                )
+
+                try:
+                    followup, _ = _response_parts(
+                        model.generate_content(tool_messages)
+                    )
+                except ResourceExhaustedError:
+                    print(
+                        Fore.RED +
+                        "While generating final response:",
+                        "Model is currently overloaded.",
+                        "Please try again later."
+                        + Style.RESET_ALL
+                    )
+                    continue
+
+            if not followup.strip():
+                print(
+                    Fore.YELLOW +
+                    "The model did not provide a final response after tools."
+                    + Style.RESET_ALL
+                )
+                followup = (
+                    "Tool output:\n\n```text\n"
+                    + "\n\n".join(tool_outputs)
+                )
+                followup += "\n```"
 
             _render_markdown(console, followup)
             messages.append(_message("model", followup))
