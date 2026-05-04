@@ -1,0 +1,2 @@
+class ShellMindError(Exception):
+    pass
