@@ -35,3 +35,10 @@ def create_model(config: Config, client_factory=genai.Client) -> GenAIModel:
         model_name=config.model,
         max_output_tokens=config.max_output_tokens
     )
+
+
+def configure_client(api_key: str) -> None:
+    """Backward-compatible hook for callers that expect explicit client setup."""
+    # The google-genai SDK uses per-client API keys in `genai.Client(...)`.
+    # We keep this function so older call sites continue to work.
+    return None

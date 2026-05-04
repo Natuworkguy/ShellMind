@@ -1,8 +1,6 @@
 import sys
 
-from google.api_core.exceptions import ResourceExhausted \
-    as ResourceExhaustedError
-from rich.console import Console
+from .console import Console
 
 from .config import Config
 from .errors import ShellMindError
@@ -25,7 +23,7 @@ def build_session(
 
     try:
         model = create_model(config)
-    except ResourceExhaustedError as exc:
+    except Exception as exc:
         raise ShellMindError(
             "Model is currently overloaded. Please try again later."
         ) from exc
