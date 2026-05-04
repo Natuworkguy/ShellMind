@@ -1,12 +1,21 @@
 import os
 from dataclasses import dataclass
 
-from colorama import Fore, Style
-from dotenv import load_dotenv
-
 from .errors import ShellMindError
 
-load_dotenv()
+
+def _load_dotenv(path: str = ".env") -> None:
+    if not os.path.exists(path):
+        return
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_dotenv()
 
 
 def int_env(name: str, default: int, *, minimum: int) -> int:
@@ -44,30 +53,10 @@ class Config:
         return cls(
             api_key=api_key,
             model=model,
-            max_history_messages=int_env(
-                "MAX_HISTORY_MESSAGES",
-                6,
-                minimum=2
-            ),
-            max_history_chars=int_env(
-                "MAX_HISTORY_CHARS",
-                3000,
-                minimum=1000
-            ),
-            max_tool_rounds=int_env(
-                "MAX_TOOL_ROUNDS",
-                4,
-                minimum=1
-            ),
-            max_tool_output_chars=int_env(
-                "MAX_TOOL_OUTPUT_CHARS",
-                1200,
-                minimum=500
-            ),
-            max_output_tokens=int_env(
-                "MAX_OUTPUT_TOKENS",
-                512,
-                minimum=128
-            ),
-            prompt=Fore.BLUE + "[SM]> " + Style.RESET_ALL,
+            max_history_messages=int_env("MAX_HISTORY_MESSAGES", 6, minimum=2),
+            max_history_chars=int_env("MAX_HISTORY_CHARS", 3000, minimum=1000),
+            max_tool_rounds=int_env("MAX_TOOL_ROUNDS", 4, minimum=1),
+            max_tool_output_chars=int_env("MAX_TOOL_OUTPUT_CHARS", 1200, minimum=500),
+            max_output_tokens=int_env("MAX_OUTPUT_TOKENS", 512, minimum=128),
+            prompt="[SM]> ",
         )
