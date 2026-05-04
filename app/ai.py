@@ -19,15 +19,76 @@ class ShellMindError(Exception):
     pass
 
 
+def _int_env(name: str, default: int, *, minimum: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    try:
+        return max(int(value), minimum)
+    except ValueError:
+        return default
+
+
 class config:
     api_key = os.getenv("API_KEY")
     model = os.getenv("MODEL")
+    max_history_messages = _int_env("MAX_HISTORY_MESSAGES", 12, minimum=2)
+    max_tool_output_chars = _int_env("MAX_TOOL_OUTPUT_CHARS", 4000, minimum=500)
+    max_output_tokens = _int_env("MAX_OUTPUT_TOKENS", 1024, minimum=128)
     prompt = Fore.BLUE + "[SM]> " + Style.RESET_ALL
 
 
 def banner(c: Console) -> None:
     f = Figlet(font="slant")
     c.print(f.renderText("ShellMind CLI"), style="bold cyan")
+
+
+def _message(role: str, text: str) -> dict:
+    return {"role": role, "parts": [{"text": text}]}
+
+
+def _trim_history(messages: list[dict]) -> None:
+    if len(messages) > config.max_history_messages:
+        del messages[:-config.max_history_messages]
+
+
+def _trim_tool_output(text: str) -> str:
+    text = text.strip() or "(no output)"
+
+    if len(text) <= config.max_tool_output_chars:
+        return text
+
+    head_len = config.max_tool_output_chars // 2
+    tail_len = config.max_tool_output_chars - head_len
+    omitted = len(text) - config.max_tool_output_chars
+
+    return (
+        text[:head_len]
+        + f"\n\n... truncated {omitted} characters ...\n\n"
+        + text[-tail_len:]
+    )
+
+
+def _response_parts(response) -> tuple[str, list]:
+    final = ""
+    tool_calls = []
+    candidates = getattr(response, "candidates", None) or []
+
+    if not candidates:
+        return final, tool_calls
+
+    content = getattr(candidates[0], "content", None)
+    parts = getattr(content, "parts", None) or []
+
+    for part in parts:
+        if getattr(part, "text", None):
+            final += part.text
+
+        if getattr(part, "function_call", None):
+            tool_calls.append(part.function_call)
+
+    return final, tool_calls
 
 
 def _render_markdown(console: Console, text: str, *, end: str = "\n") -> None:
@@ -52,7 +113,34 @@ def main() -> None:
         genai.configure(api_key=config.api_key)  # type: ignore
 
     console = Console()
-    messages = [{"role": "user", "parts": [{"text": SYSTEM_PROMPT}]}]
+    messages = []
+
+    model = None
+    if hasattr(genai, "GenerativeModel"):
+        try:
+            model = genai.GenerativeModel(  # type: ignore
+                config.model,
+                generation_config={
+                    "max_output_tokens": config.max_output_tokens,
+                },
+                system_instruction=SYSTEM_PROMPT
+            )
+        except ResourceExhaustedError:
+            print(
+                Fore.RED +
+                "Model is currently overloaded.",
+                "Please try again later."
+                + Style.RESET_ALL
+            )
+            return
+
+    if model is None:
+        print(
+            Fore.YELLOW +
+            "Failed to initialize the generative model."
+            + Style.RESET_ALL
+        )
+        return
 
     banner(console)
 
@@ -79,31 +167,8 @@ Type anything else to get a response from the AI.
                 )
                 continue
 
-            messages.append({"role": "user", "parts": [{"text": uin}]})
-
-            model = None
-
-            if hasattr(genai, "GenerativeModel"):
-                try:
-                    model = genai.GenerativeModel(  # type: ignore
-                        config.model,
-                        system_instruction=SYSTEM_PROMPT
-                    )
-                except ResourceExhaustedError:
-                    print(
-                        Fore.RED +
-                        "Model is currently overloaded.",
-                        "Please try again later."
-                        + Style.RESET_ALL
-                    )
-                    continue
-            if model is None:
-                print(
-                    Fore.YELLOW +
-                    "Failed to initialize the generative model."
-                    + Style.RESET_ALL
-                )
-                continue
+            messages.append(_message("user", uin))
+            _trim_history(messages)
 
             try:
                 res = model.generate_content(messages, tools=tools)
@@ -116,48 +181,44 @@ Type anything else to get a response from the AI.
                 )
                 continue
 
-            final = ""
-            tool_calls = []
+            final, tool_calls = _response_parts(res)
 
-            for part in res.candidates[0].content.parts:
-                if getattr(part, "text", None):
-                    final += part.text
-                    _render_markdown(console, part.text, end="")
+            if not tool_calls:
+                if final:
+                    _render_markdown(console, final)
+                    messages.append(_message("model", final))
+                    _trim_history(messages)
+                print()
+                continue
 
-                if getattr(part, "function_call", None):
-                    tool_calls.append(part.function_call)
-
-            if final:
-                messages.append({"role": "model", "parts": [{"text": final}]})
+            tool_messages = messages.copy()
 
             for call in tool_calls:
                 tool_result = run_tool((call.name, dict(call.args)))
-                t = f"Tool result ({call.name}):\n{tool_result}"
-                messages.append(
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": t}
-                        ]
-                    }
+                trimmed = _trim_tool_output(tool_result)
+                tool_messages.append(
+                    _message("user", f"Tool result ({call.name}):\n{trimmed}")
                 )
 
-                try:
-                    followup = model.generate_content(messages, tools=tools) \
-                        .text
-                except ResourceExhaustedError:
-                    print(
-                        Fore.RED +
-                        "While generating follow-up response:",
-                        "Model is currently overloaded.",
-                        "Please try again later."
-                        + Style.RESET_ALL
-                    )
-                    continue
-                _render_markdown(console, followup)
-                messages.append(
-                    {"role": "model", "parts": [{"text": followup}]}
+            _trim_history(tool_messages)
+
+            try:
+                followup, _ = _response_parts(
+                    model.generate_content(tool_messages)
                 )
+            except ResourceExhaustedError:
+                print(
+                    Fore.RED +
+                    "While generating follow-up response:",
+                    "Model is currently overloaded.",
+                    "Please try again later."
+                    + Style.RESET_ALL
+                )
+                continue
+
+            _render_markdown(console, followup)
+            messages.append(_message("model", followup))
+            _trim_history(messages)
 
             print()
 

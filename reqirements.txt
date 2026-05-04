@@ -1,0 +1,5 @@
+colorama
+google-generativeai
+pyfiglet
+python-dotenv
+rich
