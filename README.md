@@ -33,7 +33,7 @@ py.exe -m build; pip install .\dist\shellmind-[VERSION]-py3-none-any.whl --force
 ```
 
 **Explanation:**
-- `py.exe -m build`: Builds the distribution packages (like the `.whl` file) from the ShellMind's source code.
+- `py.exe -m build`: Builds the distribution packages (like the `.whl` file) from ShellMind's source code.
 - `pip install .\dist\shellmind-[VERSION]-py3-none-any.whl --force-reinstall`: Installs the generated wheel file, ensuring any previous version is replaced. Replace `[VERSION]` with the version found in `pyproject.toml` or the `dist` folder.
 - `py.exe -m shellmind`: Launches the ShellMind application.
 
