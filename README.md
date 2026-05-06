@@ -16,7 +16,7 @@ ShellMind CLI is an AI-powered command-line interface that allows you to interac
 1. **Clone the repository**:
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Natuworkguy/ShellMind
    cd shellmind
    ```
 
