@@ -30,8 +30,8 @@ def test_trim_history():
 
 def test_direct_shell_command():
     assert _direct_shell_command("!ls") == "ls"
-    assert _direct_shell_command("!shell echo hi") == "echo hi"
-    assert _direct_shell_command("!run git status") == "git status"
+    assert _direct_shell_command("!echo hi") == "echo hi"
+    assert _direct_shell_command("!git status") == "git status"
     assert _direct_shell_command("just text") is None
 
 
