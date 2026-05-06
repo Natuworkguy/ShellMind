@@ -51,15 +51,15 @@ MODEL=gemini-1.5-flash
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|---------- |-------------|--------|
-| `API_KEY` | **Required**. Your Google Generative AI API key. | None |
-| `MODEL` | **Required**. The model name (e.g., `gemini-1.5-flash`). | None |
-| `MAX_HISTORY_MESSAGES` | Maximum number of messages kept in history. | 6 |
-| `MAX_HISTORY_CHARS` | Maximum characters kept in history. | 3000 |
-| `MAX_TOOL_ROUNDS` | Maximum tool-calling rounds per request. | 4 |
-| `MAX_TOOL_OUTPUT_CHARS` | Maximum characters for tool output before truncation. | 1200 |
-| `MAX_OUTPUT_TOKENS` | Maximum tokens for AI response. | 512 |
+| Variable | Description | Default | Minimum |
+|---------- |-------------|--------|---------|
+| `API_KEY` | **Required**. Your Google Generative AI API key. | None | N/A |
+| `MODEL` | **Required**. The model name (e.g., `gemini-1.5-flash`). | None | N/A |
+| `MAX_HISTORY_MESSAGES` | Maximum number of messages kept in history. | 6 | 2 |
+| `MAX_HISTORY_CHARS` | Maximum characters kept in history. | 3000 | 1000 |
+| `MAX_TOOL_ROUNDS` | Maximum tool-calling rounds per request. | 4 | 1 |
+| `MAX_TOOL_OUTPUT_CHARS` | Maximum characters for tool output before truncation. | 1200 | 500 |
+| `MAX_OUTPUT_TOKENS` | Maximum tokens for AI response. | 512 | 128 |
 
 ## Usage
 
