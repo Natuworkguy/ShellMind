@@ -1,9 +1,6 @@
 import warnings
 
-warnings.filterwarnings(
-    "ignore",
-    category=FutureWarning
-)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 from .ai import main  # noqa: E402
 

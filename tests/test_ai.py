@@ -3,7 +3,7 @@ from shellmind.ai import (
     _trim_history,
     _direct_shell_command,
     _trim_tool_output,
-    config
+    config,
 )
 
 

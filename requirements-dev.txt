@@ -5,3 +5,4 @@ twine
 mypy
 bandit
 validate-pyproject
+types-colorama

@@ -2,12 +2,12 @@ from .tools import tools, SYSTEM_PROMPT, run_tool
 
 import os
 import sys
+from typing import Any
 
 from colorama import Fore, Style
 from dotenv import load_dotenv
 from google import generativeai as genai
-from google.api_core.exceptions import ResourceExhausted \
-    as ResourceExhaustedError
+from google.api_core.exceptions import ResourceExhausted as ResourceExhaustedError
 from google.generativeai import protos
 from pyfiglet import Figlet
 from rich.console import Console
@@ -40,11 +40,7 @@ class config:
     max_history_messages = _int_env("MAX_HISTORY_MESSAGES", 6, minimum=2)
     max_history_chars = _int_env("MAX_HISTORY_CHARS", 3000, minimum=1000)
     max_tool_rounds = _int_env("MAX_TOOL_ROUNDS", 4, minimum=1)
-    max_tool_output_chars = _int_env(
-        "MAX_TOOL_OUTPUT_CHARS",
-        1200,
-        minimum=500
-    )
+    max_tool_output_chars = _int_env("MAX_TOOL_OUTPUT_CHARS", 1200, minimum=500)
     max_output_tokens = _int_env("MAX_OUTPUT_TOKENS", 512, minimum=128)
     prompt = Fore.BLUE + "[SM]> " + Style.RESET_ALL
 
@@ -72,7 +68,7 @@ def _message_text(message: dict) -> str:
 
 def _trim_history(messages: list[dict]) -> None:
     if len(messages) > config.max_history_messages:
-        del messages[:-config.max_history_messages]
+        del messages[: -config.max_history_messages]
 
     while (
         len(messages) > 1
@@ -108,7 +104,7 @@ def _trim_tool_output(text: str) -> str:
 
 def _response_parts(response) -> tuple[str, list]:
     final = ""
-    tool_calls = []
+    tool_calls: list[Any] = []
     candidates = getattr(response, "candidates", None) or []
 
     if not candidates:
@@ -139,30 +135,22 @@ def _response_content(response):
 def _tool_response_part(name: str, result: str):
     return protos.Part(
         function_response=protos.FunctionResponse(
-            name=name,
-            response={"result": result}
+            name=name, response={"result": result}
         )
     )
 
 
 def _render_markdown(console: Console, text: str, *, end: str = "\n") -> None:
-    console.print(
-        Markdown(
-            text,
-            code_theme="monokai",
-            hyperlinks=True
-        ),
-        end=end
-    )
+    console.print(Markdown(text, code_theme="monokai", hyperlinks=True), end=end)
 
 
 def main() -> None:
     def _not_set_error(name: str) -> None:
         print(
-            Fore.RED +
-            f"{name} is not set. Please set it to use ShellMind CLI.\n" +
-            f"Set {name} in environment variable or in {ENV_PATH} file." +
-            Style.RESET_ALL
+            Fore.RED
+            + f"{name} is not set. Please set it to use ShellMind CLI.\n"
+            + f"Set {name} in environment variable or in {ENV_PATH} file."
+            + Style.RESET_ALL
         )
         sys.exit(1)
 
@@ -176,33 +164,27 @@ def main() -> None:
         genai.configure(api_key=config.api_key)  # type: ignore
 
     console = Console()
-    messages = []
+    messages: list[Any] = []
 
     model = None
-    if hasattr(genai, "GenerativeModel"):
+    if config.model and hasattr(genai, "GenerativeModel"):
         try:
             model = genai.GenerativeModel(  # type: ignore
                 config.model,  # pyright: ignore[reportArgumentType]
                 generation_config={
                     "max_output_tokens": config.max_output_tokens,
                 },
-                system_instruction=SYSTEM_PROMPT
+                system_instruction=SYSTEM_PROMPT,
             )
         except ResourceExhaustedError:
             print(
-                Fore.RED +
-                "Model is currently overloaded.",
-                "Please try again later."
-                + Style.RESET_ALL
+                Fore.RED + "Model is currently overloaded.",
+                "Please try again later." + Style.RESET_ALL,
             )
             return
 
     if model is None:
-        print(
-            Fore.RED +
-            "Failed to initialize the generative model."
-            + Style.RESET_ALL
-        )
+        print(Fore.RED + "Failed to initialize the generative model." + Style.RESET_ALL)
         return
 
     banner(console)
@@ -221,27 +203,21 @@ def main() -> None:
             if uin == "/model":
                 if not config.model or config.model is None:
                     print(
-                        Fore.RED +
-                        "Error retrieving model information."
+                        Fore.RED
+                        + "Error retrieving model information."
                         + Style.RESET_ALL
                     )
 
                 print(
-                    Fore.LIGHTBLACK_EX +
-                    config.model
+                    Fore.LIGHTBLACK_EX + config.model
                     if config.model
-                    else ""
-                    + Style.RESET_ALL
+                    else "" + Style.RESET_ALL
                 )
                 continue
 
             if uin == "/clear":
                 messages.clear()
-                print(
-                    Fore.LIGHTBLACK_EX +
-                    "Context cleared."
-                    + Style.RESET_ALL
-                )
+                print(Fore.LIGHTBLACK_EX + "Context cleared." + Style.RESET_ALL)
                 continue
 
             direct_command = _direct_shell_command(uin)
@@ -260,7 +236,8 @@ Type {Fore.BLUE}/bye{Fore.YELLOW} or {Fore.BLUE}/exit{Fore.YELLOW} to exit.
 Type {Fore.BLUE}/clear{Fore.YELLOW} to clear saved context.
 Type {Fore.BLUE}!<command>{Fore.YELLOW} to run shell directly.
 Type anything else to get a response from the AI.
-""" + Style.RESET_ALL
+"""
+                    + Style.RESET_ALL
                 )
                 continue
 
@@ -271,10 +248,8 @@ Type anything else to get a response from the AI.
                 res = model.generate_content(messages, tools=tools)
             except ResourceExhaustedError:
                 print(
-                    Fore.RED +
-                    "Model is currently overloaded.",
-                    "Please try again later."
-                    + Style.RESET_ALL
+                    Fore.RED + "Model is currently overloaded.",
+                    "Please try again later." + Style.RESET_ALL,
                 )
                 continue
 
@@ -287,8 +262,8 @@ Type anything else to get a response from the AI.
                     _trim_history(messages)
                 else:
                     print(
-                        Fore.YELLOW +
-                        "The model returned no response."
+                        Fore.YELLOW
+                        + "The model returned no response."
                         + Style.RESET_ALL
                     )
                     messages.pop()
@@ -326,11 +301,9 @@ Type anything else to get a response from the AI.
                         break
             except ResourceExhaustedError:
                 print(
-                    Fore.RED +
-                    "While generating follow-up response:",
+                    Fore.RED + "While generating follow-up response:",
                     "Model is currently overloaded.",
-                    "Please try again later."
-                    + Style.RESET_ALL
+                    "Please try again later." + Style.RESET_ALL,
                 )
                 continue
 
@@ -339,34 +312,27 @@ Type anything else to get a response from the AI.
                     _message(
                         "user",
                         "Using the tool results above, answer the original "
-                        "request now. Do not call more tools."
+                        "request now. Do not call more tools.",
                     )
                 )
 
                 try:
-                    followup, _ = _response_parts(
-                        model.generate_content(tool_messages)
-                    )
+                    followup, _ = _response_parts(model.generate_content(tool_messages))
                 except ResourceExhaustedError:
                     print(
-                        Fore.RED +
-                        "While generating final response:",
+                        Fore.RED + "While generating final response:",
                         "Model is currently overloaded.",
-                        "Please try again later."
-                        + Style.RESET_ALL
+                        "Please try again later." + Style.RESET_ALL,
                     )
                     continue
 
             if not followup.strip():
                 print(
-                    Fore.YELLOW +
-                    "The model did not provide a final response after tools."
+                    Fore.YELLOW
+                    + "The model did not provide a final response after tools."
                     + Style.RESET_ALL
                 )
-                followup = (
-                    "Tool output:\n\n```text\n"
-                    + "\n\n".join(tool_outputs)
-                )
+                followup = "Tool output:\n\n```text\n" + "\n\n".join(tool_outputs)
                 followup += "\n```"
 
             _render_markdown(console, followup)

@@ -46,15 +46,10 @@ jobs:
           echo "::group::Checking project structure"
           ls -R shellmind/
           echo "::endgroup::"
-      - name: Create Summary
-        run: |
-          echo "### Validation Results" >> $GITHUB_STEP_SUMMARY
-          echo "- pyproject.toml validated ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- Project structure verified ✅" >> $GITHUB_STEP_SUMMARY
 
   lint:
     name: 🧹 Lint (Ruff)
-    needs: validation
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +69,7 @@ jobs:
 
   typecheck:
     name: 📝 Type Check (Mypy)
-    needs: validation
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +86,7 @@ jobs:
 
   security-scan:
     name: 🔍 Security Scan (Bandit)
-    needs: validation
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,9 +101,19 @@ jobs:
           bandit -r shellmind/
           echo "::endgroup::"
 
+  infra-gate:
+    name: ⚖️ Infrastructure Gate
+    needs: [validation, lint, typecheck, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validation Summary
+        run: |
+          echo "### Infrastructure Validation Passed" >> $GITHUB_STEP_SUMMARY
+          echo "Static analysis and project structure checks are complete." >> $GITHUB_STEP_SUMMARY
+
   unit-tests:
     name: 🧪 Unit Tests (${{ matrix.os }}, ${{ matrix.python-version }})
-    needs: [lint, typecheck, security-scan]
+    needs: infra-gate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -128,7 +133,7 @@ jobs:
 
   integration-tests:
     name: 🔗 Integration Tests (${{ matrix.os }}, ${{ matrix.python-version }})
-    needs: [lint, typecheck, security-scan]
+    needs: infra-gate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -156,8 +161,8 @@ jobs:
           echo "### Quality Gate Passed" >> $GITHUB_STEP_SUMMARY
           echo "All validation, linting, security, and tests have passed across all platforms." >> $GITHUB_STEP_SUMMARY
 
-  build:
-    name: 📦 Build
+  build-sdist:
+    name: 📦 Build SDist
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
@@ -167,25 +172,48 @@ jobs:
         with:
           python-version: '3.10'
           install-dev: 'true'
-      - name: Build Source and Wheel
-        run: |
-          python -m build
-      - name: Upload Build Artifacts
+      - name: Build SDist
+        run: python -m build --sdist
+      - name: Upload SDist
         uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: sdist
           path: dist/
 
-  package:
-    name: 🎁 Package Verification
-    needs: build
+  build-wheel:
+    name: 🎡 Build Wheel
+    needs: quality-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download Artifacts
+      - name: Setup Environment
+        uses: ./.github/actions/setup-shellmind
+        with:
+          python-version: '3.10'
+          install-dev: 'true'
+      - name: Build Wheel
+        run: python -m build --wheel
+      - name: Upload Wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/
+
+  package-verify:
+    name: 🎁 Package Verification
+    needs: [build-sdist, build-wheel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download SDist
         uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: sdist
+          path: dist/
+      - name: Download Wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel
           path: dist/
       - name: Setup Environment
         uses: ./.github/actions/setup-shellmind
@@ -193,12 +221,11 @@ jobs:
           python-version: '3.10'
           install-dev: 'true'
       - name: Check Package
-        run: |
-          twine check dist/*
+        run: twine check dist/*
 
   artifact-upload:
     name: 📤 Finalize Artifacts
-    needs: package
+    needs: package-verify
     runs-on: ubuntu-latest
     steps:
       - name: Log finalization
