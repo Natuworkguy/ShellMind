@@ -1,4 +1,5 @@
 colorama
+types-colorama
 google-generativeai
 pyfiglet
 python-dotenv
