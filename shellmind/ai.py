@@ -260,7 +260,8 @@ def main() -> None:
 {Fore.CYAN}Console{Fore.YELLOW}
 Type {Fore.BLUE}/model{Fore.YELLOW} to show active model.
 Type {Fore.BLUE}/help{Fore.YELLOW} or {Fore.BLUE}/?{Fore.YELLOW} to see this.
-Type {Fore.BLUE}/bye{Fore.YELLOW}, {Fore.BLUE}exit{Fore.YELLOW} or {Fore.BLUE}quit{Fore.YELLOW} to exit.
+Type {Fore.BLUE}/bye{Fore.YELLOW}, {Fore.BLUE}exit{Fore.YELLOW}
+or {Fore.BLUE}quit{Fore.YELLOW} to exit.
 Type {Fore.BLUE}/clear{Fore.YELLOW} to clear saved context.
 Type {Fore.BLUE}!<command>{Fore.YELLOW} to run shell directly.
 Type {Fore.BLUE}/run <command>{Fore.YELLOW}
