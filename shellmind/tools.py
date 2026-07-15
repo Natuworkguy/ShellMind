@@ -83,9 +83,17 @@ class DuckDuckGoSearchParser(HTMLParser):
         class_name = attrs.get("class", "")
 
         if tag == "a" and class_name is not None and "result__a" in class_name:
-            self._current = {"title": "", "href": attrs.get("href", ""), "snippet": ""}
+            self._current = {
+                "title": "",
+                "href": attrs.get("href", ""),
+                "snippet": ""
+            }
             self._capture_title = True
-        elif self._current and tag in {"div", "span"} and class_name is not None and "result__snippet" in class_name:
+        elif \
+                self._current \
+                and tag in {"div", "span"} \
+                and class_name is not None \
+                and "result__snippet" in class_name:
             self._capture_snippet = True
 
     def handle_data(self, data):
