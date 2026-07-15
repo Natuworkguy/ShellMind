@@ -92,7 +92,7 @@ When using a remote server:
 
 Inside ShellMind, run:
 
-```
+```shellmind
 /model
 ```
 
