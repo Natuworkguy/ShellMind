@@ -1,6 +1,6 @@
 colorama
 types-colorama
-google-generativeai
+ollama
 pyfiglet
 python-dotenv
 rich

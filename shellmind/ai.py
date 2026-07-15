@@ -7,10 +7,8 @@ import sys
 
 from colorama import Fore, Style
 from dotenv import load_dotenv
-from google import generativeai as genai
-from google.api_core.exceptions import ResourceExhausted \
-    as ResourceExhaustedError
-from google.generativeai import protos
+import ollama
+from ollama import ResponseError
 from pyfiglet import Figlet
 from rich.console import Console
 from rich.markdown import Markdown
@@ -38,7 +36,7 @@ def _int_env(name: str, default: int, *, minimum: int) -> int:
 
 class Config:
     """App configuration"""
-    api_key = os.getenv("API_KEY")
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     model = os.getenv("MODEL")
     max_history_messages = _int_env("MAX_HISTORY_MESSAGES", 6, minimum=2)
     max_history_chars = _int_env("MAX_HISTORY_CHARS", 3000, minimum=1000)
@@ -60,19 +58,11 @@ def banner(c: Console) -> None:
 
 
 def _message(role: str, text: str) -> dict:
-    return {"role": role, "parts": [{"text": text}]}
+    return {"role": role, "content": text}
 
 
 def _message_text(message: dict) -> str:
-    parts = message.get("parts", [])
-    text_parts = []
-
-    for part in parts:
-        text = part.get("text") if isinstance(part, dict) else None
-        if text:
-            text_parts.append(text)
-
-    return "\n".join(text_parts)
+    return message.get("content", "") or ""
 
 
 def _trim_history(messages: list[dict]) -> None:
@@ -116,42 +106,53 @@ def _trim_tool_output(text: str) -> str:
 
 
 def _response_parts(response) -> tuple[str, list]:
-    final = ""
-    tool_calls: list = []
-    candidates = getattr(response, "candidates", None) or []
+    message = getattr(response, "message", None)
 
-    if not candidates:
-        return final, tool_calls
+    if message is None:
+        return "", []
 
-    content = getattr(candidates[0], "content", None)
-    parts = getattr(content, "parts", None) or []
+    text = getattr(message, "content", "") or ""
+    tool_calls = list(getattr(message, "tool_calls", None) or [])
 
-    for part in parts:
-        if getattr(part, "text", None):
-            final += part.text
-
-        if getattr(part, "function_call", None):
-            tool_calls.append(part.function_call)
-
-    return final, tool_calls
+    return text, tool_calls
 
 
-def _response_content(response):
-    candidates = getattr(response, "candidates", None) or []
+def _tool_call_name_args(call) -> tuple[str, dict]:
+    function = getattr(call, "function", None)
+    name = getattr(function, "name", "") or ""
+    args = getattr(function, "arguments", None) or {}
 
-    if not candidates:
-        return None
-
-    return getattr(candidates[0], "content", None)
+    return name, dict(args)
 
 
-def _tool_response_part(name: str, result: str):
-    return protos.Part(
-        function_response=protos.FunctionResponse(
-            name=name,
-            response={"result": result}
+def _chat(client: "ollama.Client", messages: list, tools_arg=None):
+    if Config.model is None:
+        raise ShellMindError(
+            "MODEL is not set. Please set it in environment variable or "
+            f"in {ENV_PATH} file."
         )
+
+    return client.chat(
+        model=Config.model,  # pyright: ignore[reportArgumentType]
+        messages=messages,
+        tools=tools_arg,
+        options={"num_predict": Config.max_output_tokens},
     )
+
+
+def _try_chat(
+    client: "ollama.Client", messages: list, tools_arg=None
+) -> tuple[object | None, str | None]:
+    try:
+        return _chat(client, messages, tools_arg), None
+    except ResponseError as exc:
+        return None, str(exc)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        return None, f"Could not reach Ollama at {Config.host}. {exc}"
+
+
+def _print_backend_error(detail: str) -> None:
+    print(Fore.RED + f"Ollama backend error: {detail}" + Style.RESET_ALL)
 
 
 def _render_markdown(console: Console, text: str, *, end: str = "\n") -> None:
@@ -177,47 +178,14 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if not Config.api_key or Config.model is None:
-        _not_set_error("API_KEY")
-
-    if not Config.model or Config.model is None:
+    if not Config.model:
         _not_set_error("MODEL")
 
-    if hasattr(genai, "configure"):
-        genai.configure(api_key=Config.api_key)  # type: ignore
+    client = ollama.Client(host=Config.host)
 
     console = Console()
     messages: list = []
-
-    model = None
-    if hasattr(genai, "GenerativeModel"):
-        if Config.model is None:
-            return
-
-        try:
-            model = genai.GenerativeModel(  # type: ignore
-                Config.model,  # pyright: ignore[reportArgumentType]
-                generation_config={
-                    "max_output_tokens": Config.max_output_tokens,
-                },
-                system_instruction=SYSTEM_PROMPT
-            )
-        except ResourceExhaustedError:
-            print(
-                Fore.RED +
-                "Model is currently overloaded.",
-                "Please try again later."
-                + Style.RESET_ALL
-            )
-            return
-
-    if model is None:
-        print(
-            Fore.RED +
-            "Failed to initialize the generative model."
-            + Style.RESET_ALL
-        )
-        return
+    system_message = _message("system", SYSTEM_PROMPT)
 
     banner(console)
 
@@ -233,18 +201,10 @@ def main() -> None:
                 return
 
             if uin == "/model":
-                if not Config.model or Config.model is None:
-                    print(
-                        Fore.RED +
-                        "Error retrieving model information."
-                        + Style.RESET_ALL
-                    )
-
                 print(
                     Fore.LIGHTBLACK_EX +
-                    Config.model
-                    if Config.model
-                    else ""
+                    f"Model: {Config.model or '(unset)'}\n"
+                    f"Host: {Config.host}"
                     + Style.RESET_ALL
                 )
                 continue
@@ -268,7 +228,7 @@ def main() -> None:
                 print(
                     f"""
 {Fore.CYAN}Console{Fore.YELLOW}
-Type {Fore.BLUE}/model{Fore.YELLOW} to show active model.
+Type {Fore.BLUE}/model{Fore.YELLOW} to show active model and host.
 Type {Fore.BLUE}/help{Fore.YELLOW} or {Fore.BLUE}/?{Fore.YELLOW} to see this.
 Type {Fore.BLUE}/bye{Fore.YELLOW} or {Fore.BLUE}/exit{Fore.YELLOW} to exit.
 Type {Fore.BLUE}/clear{Fore.YELLOW} to clear saved context.
@@ -281,15 +241,12 @@ Type anything else to get a response from the AI.
             messages.append(_message("user", uin))
             _trim_history(messages)
 
-            try:
-                res = model.generate_content(messages, tools=tools)
-            except ResourceExhaustedError:
-                print(
-                    Fore.RED +
-                    "Model is currently overloaded.",
-                    "Please try again later."
-                    + Style.RESET_ALL
-                )
+            res, err = _try_chat(
+                client, [system_message] + messages, tools
+            )
+            if err:
+                _print_backend_error(err)
+                messages.pop()
                 continue
 
             final, tool_calls = _response_parts(res)
@@ -297,7 +254,7 @@ Type anything else to get a response from the AI.
             if not tool_calls:
                 if final:
                     _render_markdown(console, final)
-                    messages.append(_message("model", final))
+                    messages.append(_message("assistant", final))
                     _trim_history(messages)
                 else:
                     print(
@@ -309,43 +266,49 @@ Type anything else to get a response from the AI.
                 print()
                 continue
 
-            tool_messages = messages.copy()
+            tool_messages = [system_message] + messages.copy()
             tool_outputs = []
             followup = ""
+            tool_error = None
 
-            try:
-                for _ in range(Config.max_tool_rounds):
-                    content = _response_content(res)
-                    if content is not None:
-                        tool_messages.append(content)
-
-                    tool_response_parts = []
-
-                    for call in tool_calls:
-                        tool_result = run_tool((call.name, dict(call.args)))
-                        trimmed = _trim_tool_output(tool_result)
-                        tool_outputs.append(f"{call.name}:\n{trimmed}")
-                        tool_response_parts.append(
-                            _tool_response_part(call.name, trimmed)
-                        )
-
-                    tool_messages.append(
-                        protos.Content(role="user", parts=tool_response_parts)
+            for _ in range(Config.max_tool_rounds):
+                assistant_tool_calls = []
+                for call in tool_calls:
+                    name, args = _tool_call_name_args(call)
+                    assistant_tool_calls.append(
+                        {"function": {"name": name, "arguments": args}}
                     )
 
-                    res = model.generate_content(tool_messages, tools=tools)
-                    followup, tool_calls = _response_parts(res)
+                tool_messages.append({
+                    "role": "assistant",
+                    "content": final,
+                    "tool_calls": assistant_tool_calls,
+                })
 
-                    if not tool_calls:
-                        break
-            except ResourceExhaustedError:
-                print(
-                    Fore.RED +
-                    "While generating follow-up response:",
-                    "Model is currently overloaded.",
-                    "Please try again later."
-                    + Style.RESET_ALL
-                )
+                for call in tool_calls:
+                    name, args = _tool_call_name_args(call)
+                    tool_result = run_tool((name, args))
+                    trimmed = _trim_tool_output(tool_result)
+                    tool_outputs.append(f"{name}:\n{trimmed}")
+                    tool_messages.append({
+                        "role": "tool",
+                        "content": trimmed,
+                        "tool_name": name,
+                    })
+
+                res, err = _try_chat(client, tool_messages, tools)
+                if err:
+                    tool_error = err
+                    break
+
+                final, tool_calls = _response_parts(res)
+                followup = final
+
+                if not tool_calls:
+                    break
+
+            if tool_error:
+                _print_backend_error(tool_error)
                 continue
 
             if not followup.strip():
@@ -357,19 +320,12 @@ Type anything else to get a response from the AI.
                     )
                 )
 
-                try:
-                    followup, _ = _response_parts(
-                        model.generate_content(tool_messages)
-                    )
-                except ResourceExhaustedError:
-                    print(
-                        Fore.RED +
-                        "While generating final response:",
-                        "Model is currently overloaded.",
-                        "Please try again later."
-                        + Style.RESET_ALL
-                    )
+                res, err = _try_chat(client, tool_messages, None)
+                if err:
+                    _print_backend_error(err)
                     continue
+
+                followup, _ = _response_parts(res)
 
             if not followup.strip():
                 print(
@@ -384,7 +340,7 @@ Type anything else to get a response from the AI.
                 followup += "\n```"
 
             _render_markdown(console, followup)
-            messages.append(_message("model", followup))
+            messages.append(_message("assistant", followup))
             _trim_history(messages)
 
             print()

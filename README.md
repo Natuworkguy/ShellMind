@@ -1,10 +1,11 @@
 # ShellMind CLI
 
-ShellMind CLI is an AI-powered command-line interface that allows you to interact with generative AI models while having the ability to execute shell commands directly or through the AI.
+ShellMind CLI is an AI-powered command-line interface that allows you to interact with local (or remote) [Ollama](https://ollama.com) models while having the ability to execute shell commands directly or through the AI.
 
 ## Features
 
-- **Interactive AI Chat**: Chat with advanced generative models directly from your terminal.
+- **Interactive AI Chat**: Chat with local or self-hosted models served by Ollama, directly from your terminal.
+- **Switchable Backend**: Point ShellMind at `localhost` or any remote Ollama server via a single config option.
 - **Shell Command Execution**:
   - AI can use a `shell` tool to execute commands and see their output.
   - Manually execute shell commands using the `!` prefix.
@@ -26,6 +27,16 @@ ShellMind CLI is an AI-powered command-line interface that allows you to interac
    pip install -r requirements.txt
    ```
 
+3. **Install and start Ollama**:
+
+   ShellMind talks to an [Ollama](https://ollama.com) server. Install Ollama, start it, and pull a model that supports tool calling:
+
+   ```bash
+   ollama pull llama3.1
+   ```
+
+   By default ShellMind connects to a local server at `http://localhost:11434`. To use a remote server, set `OLLAMA_HOST` (see [Configuration](#configuration)).
+
 ### Quick Install & Run (Windows)
 
 For a quick build, install, and run cycle, you can use the following one-liner (replace `[VERSION]` with the actual version number, e.g., `0.1.0`):
@@ -42,24 +53,33 @@ py.exe -m build; pip install .\dist\shellmind-[VERSION]-py3-none-any.whl --force
 
 ## Configuration
 
-ShellMind CLI requires configuration through environment variables. You can create a `shellmind.env` file in your home directory:
+ShellMind CLI is configured through environment variables. You can create a `shellmind.env` file in your home directory:
 
 ```env
-API_KEY=your_google_ai_api_key
-MODEL=gemini-1.5-flash
+MODEL=llama3.1
+OLLAMA_HOST=http://localhost:11434
 ```
+
+For a full reference of every option, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### Environment Variables
 
 | Variable | Description | Default | Minimum |
 | -------- | ----------- | ------- | ------- |
-| `API_KEY` | **Required**. Your Google Generative AI API key. | None | N/A |
-| `MODEL` | **Required**. The model name (e.g., `gemini-1.5-flash`). | None | N/A |
+| `MODEL` | **Required**. The Ollama model name (e.g., `llama3.1`). Must be pulled on the target server. | None | N/A |
+| `OLLAMA_HOST` | Base URL of the Ollama server. Set this to point at a remote machine instead of localhost. | `http://localhost:11434` | N/A |
 | `MAX_HISTORY_MESSAGES` | Maximum number of messages kept in history. | 6 | 2 |
 | `MAX_HISTORY_CHARS` | Maximum characters kept in history. | 3000 | 1000 |
 | `MAX_TOOL_ROUNDS` | Maximum tool-calling rounds per request. | 4 | 1 |
 | `MAX_TOOL_OUTPUT_CHARS` | Maximum characters for tool output before truncation. | 1200 | 500 |
-| `MAX_OUTPUT_TOKENS` | Maximum tokens for AI response. | 512 | 128 |
+| `MAX_OUTPUT_TOKENS` | Maximum tokens for AI response (`num_predict`). | 512 | 128 |
+
+### Switching servers
+
+- **Local (default):** leave `OLLAMA_HOST` unset, or set it to `http://localhost:11434`.
+- **Remote server:** set `OLLAMA_HOST` to the other machine, e.g. `OLLAMA_HOST=http://192.168.1.50:11434` or `OLLAMA_HOST=https://ollama.example.com`.
+
+Make sure the target server is reachable and that `MODEL` has been pulled on it.
 
 ## Usage
 
@@ -72,7 +92,7 @@ python run.py
 ### Internal Commands
 
 - `/help` or `/?`: Display the help message.
-- `/model`: Show the currently active model.
+- `/model`: Show the currently active model and Ollama host.
 - `/clear`: Clear the conversation history.
 - `/bye`: Exit the application.
 

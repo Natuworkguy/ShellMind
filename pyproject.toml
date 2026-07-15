@@ -11,7 +11,7 @@ authors = [
 ]
 dependencies = [
     "colorama",
-    "google-generativeai",
+    "ollama",
     "pyfiglet",
     "python-dotenv",
     "rich",
