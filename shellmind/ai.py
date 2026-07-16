@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from pathlib import Path
 
-ENV_PATH = str(Path.home() / "shellmind.env")
+ENV_PATH = str(Path.home() / "flash.env")
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -54,7 +54,7 @@ def banner(c: Console) -> None:
     """Print the app banner"""
 
     f = Figlet(font="slant")
-    c.print(f.renderText("ShellMind CLI"), style="bold cyan")
+    c.print(f.renderText("FLASH CLI"), style="bold cyan")
 
 
 def _message(role: str, text: str) -> dict:
