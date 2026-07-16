@@ -5,7 +5,7 @@ FLASH (**F**ast **L**ocal **A**gent **SH**ell) CLI is an AI-powered command-line
 ## Features
 
 - **Interactive AI Chat**: Chat with local or self-hosted models served by Ollama, directly from your terminal.
-- **Switchable Backend**: Point ShellMind at `localhost` or any remote Ollama server via a single config option.
+- **Switchable Backend**: Point Flash at `localhost` or any remote Ollama server via a single config option.
 - **Shell Command Execution**:
   - AI can use a `shell` tool to execute commands and see their output.
   - Manually execute shell commands using the `!` prefix.
@@ -29,27 +29,19 @@ FLASH (**F**ast **L**ocal **A**gent **SH**ell) CLI is an AI-powered command-line
 
 3. **Install and start Ollama**:
 
-   ShellMind talks to an [Ollama](https://ollama.com) server. Install Ollama, start it, and pull a model that supports tool calling:
+   Flash talks to an [Ollama](https://ollama.com) server. Install Ollama, start it, and pull a model that supports tool calling:
 
    ```bash
    ollama pull llama3.1
    ```
 
-   By default ShellMind connects to a local server at `http://localhost:11434`. To use a remote server, set `OLLAMA_HOST` (see [Configuration](#configuration)).
+   By default, Flash connects to a local server at `http://localhost:11434`. To use a remote server, set `OLLAMA_HOST` (see [Configuration](#configuration)).
 
-### Quick Install & Run (Windows)
+### Run
 
-For a quick build, install, and run cycle, you can use the following one-liner (replace `[VERSION]` with the actual version number, e.g., `0.1.0`):
-
-```powershell
-py.exe -m build; pip install .\dist\shellmind-[VERSION]-py3-none-any.whl --force-reinstall; py.exe -m shellmind
+```bash
+python3 run.py
 ```
-
-**Explanation:**
-
-- `py.exe -m build`: Builds the distribution packages (like the `.whl` file) from ShellMind's source code.
-- `pip install .\dist\shellmind-[VERSION]-py3-none-any.whl --force-reinstall`: Installs the generated wheel file, ensuring any previous version is replaced. Replace `[VERSION]` with the version found in `pyproject.toml` or the `dist` folder.
-- `py.exe -m shellmind`: Launches the ShellMind application.
 
 ## Configuration
 

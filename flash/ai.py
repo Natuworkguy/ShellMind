@@ -19,7 +19,7 @@ ENV_PATH = str(Path.home() / "flash.env")
 load_dotenv(dotenv_path=ENV_PATH)
 
 
-class ShellMindError(Exception):
+class FlashError(Exception):
     """General error for uncaught exceptions in the main loop"""
 
 
@@ -127,7 +127,7 @@ def _tool_call_name_args(call) -> tuple[str, dict]:
 
 def _chat(client: "ollama.Client", messages: list, tools_arg=None):
     if Config.model is None:
-        raise ShellMindError(
+        raise FlashError(
             "MODEL is not set. Please set it in environment variable or "
             f"in {ENV_PATH} file."
         )
@@ -172,7 +172,7 @@ def main() -> None:
     def _not_set_error(name: str) -> None:
         print(
             Fore.RED +
-            f"{name} is not set. Please set it to use ShellMind CLI.\n" +
+            f"{name} is not set. Please set it to use Flash CLI.\n" +
             f"Set {name} in environment variable or in {ENV_PATH} file." +
             Style.RESET_ALL
         )
@@ -354,6 +354,6 @@ if __name__ == "__main__":
     try:
         print(Fore.GREEN + "Loading..." + Style.RESET_ALL)
         main()
-    except ShellMindError as e:
+    except FlashError as e:
         print(Fore.RED + str(e) + Style.RESET_ALL)
         sys.exit(1)

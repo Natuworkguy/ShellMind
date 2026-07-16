@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "shellmind"
+name = "flash"
 version = "0.1.0"
-description = "ShellMind CLI"
+description = "FLASH CLI"
 authors = [
     { name = "Natuworkguy" },
 ]
@@ -19,8 +19,8 @@ dependencies = [
 requires-python = ">=3.10"
 
 [project.scripts]
-shellmind = "shellmind.ai:main"
+flash = "flash.ai:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["shellmind*"]
+include = ["flash*"]
