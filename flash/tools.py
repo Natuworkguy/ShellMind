@@ -82,22 +82,30 @@ class DuckDuckGoSearchParser(HTMLParser):
         self._capture_title = False
         self._capture_snippet = False
 
+    def _finish_current(self) -> None:
+        if self._current is None:
+            return
+
+        if self._current["title"].strip() and self._current["href"]:
+            self.results.append(self._current)
+
+        self._current = None
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        class_name = attrs.get("class", "")
+        class_name = attrs.get("class") or ""
 
-        if tag == "a" and class_name is not None and "result__a" in class_name:
+        if tag == "a" and "result__a" in class_name:
+            # A new result starts here, so bank the previous one first.
+            self._finish_current()
             self._current = {
                 "title": "",
                 "href": attrs.get("href", ""),
                 "snippet": ""
             }
             self._capture_title = True
-        elif \
-                self._current \
-                and tag in {"div", "span"} \
-                and class_name is not None \
-                and "result__snippet" in class_name:
+        elif self._current and "result__snippet" in class_name:
+            # Snippets come back as <a>, but have been <div>/<span> before.
             self._capture_snippet = True
 
     def handle_data(self, data):
@@ -107,35 +115,50 @@ class DuckDuckGoSearchParser(HTMLParser):
             self._current["snippet"] += data
 
     def handle_endtag(self, tag):
-        if self._capture_title and tag == "a" and self._current is not None:
+        if self._capture_title and tag == "a":
             self._capture_title = False
-            if self._current["title"].strip() and self._current["href"]:
-                self.results.append(self._current)
-            self._current = None
-        if self._capture_snippet and tag in {"div", "span"}:
+        if self._capture_snippet and tag in {"a", "div", "span"}:
             self._capture_snippet = False
+
+    def close(self) -> None:
+        super().close()
+        self._finish_current()
 
 
 def web_search(query: str) -> str:
     """Search the web and return the top DuckDuckGo results."""
 
     print(Fore.BLUE + f"Searching the web for: {query}" + Style.RESET_ALL)
-    url = "https://html.duckduckgo.com/html/?" + urlencode({"q": query})
+
+    # DuckDuckGo answers GET with an anti-bot challenge (HTTP 202) and no
+    # results, so the query has to be POSTed as form data instead.
     request = Request(
-        url,
+        "https://html.duckduckgo.com/html/",
+        data=urlencode({"q": query}).encode(),
+        method="POST",
         headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Content-Type": "application/x-www-form-urlencoded",
         },
     )
 
     try:
         with urlopen(request, timeout=15) as response:  # nosec B310
+            status = response.status
             html = response.read().decode("utf-8", errors="ignore")
     except Exception as exc:
         return f"Web search failed: {exc}"
 
+    if status != 200:
+        return (
+            f"Web search failed: DuckDuckGo returned HTTP {status} instead of "
+            "results. The search backend is unavailable, so nothing was "
+            "searched. This does not mean the topic has no results."
+        )
+
     parser = DuckDuckGoSearchParser()
     parser.feed(html)
+    parser.close()
 
     if not parser.results:
         return "No web search results found."
