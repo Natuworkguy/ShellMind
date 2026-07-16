@@ -28,10 +28,36 @@ SYSTEM_PROMPT = f"""
 """.strip()
 
 
-def shell_tool(command: str) -> str:
+DEFAULT_SHELL_TIMEOUT = 15
+MAX_SHELL_TIMEOUT = 600
+
+
+def _shell_timeout(timeout) -> int:
+    if timeout is None:
+        return DEFAULT_SHELL_TIMEOUT
+
+    try:
+        seconds = int(float(timeout))
+    except (TypeError, ValueError):
+        return DEFAULT_SHELL_TIMEOUT
+
+    return max(1, min(seconds, MAX_SHELL_TIMEOUT))
+
+
+def shell_tool(command: str, timeout=None) -> str:
     """Tool to execute a shell command"""
 
-    print(Fore.BLUE + f"Executing shell command: {command}" + Style.RESET_ALL)
+    seconds = _shell_timeout(timeout)
+
+    suffix = "" \
+        if seconds == DEFAULT_SHELL_TIMEOUT \
+        else f" (timeout {seconds}s)"
+
+    print(
+        Fore.BLUE
+        + f"Executing shell command: {command}{suffix}"
+        + Style.RESET_ALL
+    )
 
     try:
         if os.name == "nt":
@@ -47,7 +73,7 @@ def shell_tool(command: str) -> str:
                 args,
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=seconds,
                 check=False,
             )
         else:
@@ -56,13 +82,15 @@ def shell_tool(command: str) -> str:
                 shell=True,  # nosec B602
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=seconds,
                 check=False,
             )
     except subprocess.TimeoutExpired:
         return (
-            "Error: Command timed out after 15 seconds. "
-            "Please note that shell commands are run non-interactively."
+            f"Error: Command timed out after {seconds} seconds. "
+            "Please note that shell commands are run non-interactively. "
+            "If the command was simply slow rather than stuck, retry it with "
+            "a larger timeout."
         )
 
     parts = [result.stdout.strip(), result.stderr.strip()]
@@ -202,7 +230,19 @@ tools = [
                     "command": {
                         "type": "string",
                         "description": "Command.",
-                    }
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": (
+                            "Optional seconds to wait before killing the "
+                            f"command. Defaults to {DEFAULT_SHELL_TIMEOUT}. "
+                            "Omit it unless you expect the command to be "
+                            "slow, such as an install, build, or test run. "
+                            f"Maximum {MAX_SHELL_TIMEOUT}."
+                        ),
+                        "minimum": 1,
+                        "maximum": MAX_SHELL_TIMEOUT,
+                    },
                 },
                 "required": ["command"],
             },
