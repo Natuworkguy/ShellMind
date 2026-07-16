@@ -205,6 +205,9 @@ def main() -> None:
                 print()
                 return
 
+            if uin.strip() == "":
+                continue
+
             if uin in ("/bye", "/exit"):
                 return
 
