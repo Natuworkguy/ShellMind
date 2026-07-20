@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from pathlib import Path
 
-ENV_PATH = str(Path.home() / "flash.env")
+ENV_PATH = str(Path.home() / ".flash.env")
 OLLAMA_HOST_DEFAULT = "http://localhost:11434"
 
 load_dotenv(dotenv_path=ENV_PATH)
